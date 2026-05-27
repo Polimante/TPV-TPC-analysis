@@ -1,0 +1,25 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# App log
+tpv_app.log
+*.log
+
+# Measurement output (large data files)
+testes/
+tpv_app/diag_output/
+*.csv
+*.xlsx
+*.xls
+
+# Claude AI session files
+.claude/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# VS Code
+.vscode/
