@@ -14,12 +14,15 @@ from PyQt6.QtWidgets import (
     QLineEdit, QFileDialog, QListWidget, QListWidgetItem,
     QMessageBox, QStatusBar, QCheckBox, QFrame, QSizePolicy,
     QComboBox, QSpinBox, QScrollArea, QProgressBar, QButtonGroup,
+    QApplication, QProgressDialog,
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSettings, QUrl, QEvent
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSettings, QUrl, QEvent, QTimer
 from PyQt6.QtGui import QColor, QPalette, QAction, QDesktopServices, QKeySequence
 
 from hardware import OsciloscopioController, ArduinoController
 from core import salvar_csv
+from version import __version__
+import updater
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +153,37 @@ class _Worker(QThread):
             except Exception:
                 pass
             logger.exception("Error in acquisition worker")
+            self.failed.emit(str(exc))
+
+
+class _UpdateCheckWorker(QThread):
+    found  = pyqtSignal(object)   # updater.Release, or None if up to date
+    failed = pyqtSignal(str)
+
+    def run(self):
+        try:
+            rel = updater.fetch_latest()
+            self.found.emit(rel if updater.is_newer(rel) else None)
+        except Exception as exc:
+            logger.info("Update check failed: %s", exc)
+            self.failed.emit(str(exc))
+
+
+class _UpdateDownloadWorker(QThread):
+    progress = pyqtSignal(int, int)   # done bytes, total bytes
+    done     = pyqtSignal(str)        # path of the downloaded exe
+    failed   = pyqtSignal(str)
+
+    def __init__(self, release):
+        super().__init__()
+        self._release = release
+
+    def run(self):
+        try:
+            path = updater.download_exe(self._release, self.progress.emit)
+            self.done.emit(path)
+        except Exception as exc:
+            logger.exception("Update download failed")
             self.failed.emit(str(exc))
 
 
@@ -488,7 +522,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("TPV / TPC — Teledyne LeCroy WaveJet 334T")
+        self.setWindowTitle(f"TPV / TPC — Teledyne LeCroy WaveJet 334T  (v{__version__})")
         self.setMinimumSize(1320, 840)
 
         self._settings = QSettings('TeledyneLab', 'TPVTPC')
@@ -501,11 +535,16 @@ class MainWindow(QMainWindow):
         self._collect_nome  = ''
         self._collect_pasta = ''
         self._meas_unit = 's'
+        self._update_check: _UpdateCheckWorker | None = None
+        self._update_dl: _UpdateDownloadWorker | None = None
 
         self._setup_logging()
+        updater.cleanup_previous_update()
         self._build_menu()
         self._build_ui()
         self._auto_connect()
+        # Let the window show first; the check runs in the background.
+        QTimer.singleShot(2000, lambda: self._check_updates(manual=False))
 
     # ── Logging ──────────────────────────────────────────────────────────────
 
@@ -550,6 +589,11 @@ class MainWindow(QMainWindow):
         doc_action.triggered.connect(self._open_documentation)
         help_menu.addAction(doc_action)
 
+        update_action = QAction("Check for &updates…", self)
+        update_action.setStatusTip("Look for a newer version on GitHub")
+        update_action.triggered.connect(lambda: self._check_updates(manual=True))
+        help_menu.addAction(update_action)
+
         help_menu.addSeparator()
 
         about_action = QAction("&About", self)
@@ -577,6 +621,7 @@ class MainWindow(QMainWindow):
             self,
             "About — TPV/TPC",
             "<h3>TPV / TPC — Teledyne LeCroy WaveJet 334</h3>"
+            f"<p>Version {__version__}</p>"
             "<p>Software for automated <b>Transient Photovoltage</b> and "
             "<b>Transient Photocurrent</b> measurements on solar cells.</p>"
             "<p>Processing pipeline:<br>"
@@ -586,6 +631,103 @@ class MainWindow(QMainWindow):
             "<p>Output: CSV + XLSX with raw and processed columns.</p>"
             "<p><i>For full details: Help &rarr; Documentation (F1)</i></p>"
         )
+
+    # ── Updates ──────────────────────────────────────────────────────────────
+
+    def _check_updates(self, manual: bool):
+        if self._update_check and self._update_check.isRunning():
+            return
+        w = _UpdateCheckWorker()
+        w.found.connect(lambda rel: self._on_update_checked(rel, manual))
+        w.failed.connect(lambda err: manual and QMessageBox.warning(
+            self, "Check for updates",
+            f"Could not reach GitHub to check for updates:\n{err}"))
+        self._update_check = w
+        w.start()
+
+    def _on_update_checked(self, rel, manual: bool):
+        if rel is None:
+            if manual:
+                QMessageBox.information(
+                    self, "Check for updates",
+                    f"You are running the latest version (v{__version__}).")
+            return
+        # The automatic check stays quiet about a version the user skipped.
+        if not manual and self._settings.value('update/skip', '') == rel.version:
+            return
+
+        notes = rel.notes.strip() or "(no release notes)"
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Update available")
+        msg.setIcon(QMessageBox.Icon.Information)
+        msg.setText(f"<b>Version {rel.version} is available</b> "
+                    f"(you have {__version__}).")
+        msg.setDetailedText(notes)
+
+        if updater.is_frozen() and rel.exe_url:
+            msg.setInformativeText("Download and install it now? "
+                                   "The program will restart.")
+            btn_go = msg.addButton("Update now", QMessageBox.ButtonRole.AcceptRole)
+        else:
+            msg.setInformativeText(
+                "This copy runs from source code — update it with "
+                "<code>git pull</code>, or download the new version from GitHub.")
+            btn_go = msg.addButton("Open GitHub", QMessageBox.ButtonRole.AcceptRole)
+        btn_skip = msg.addButton("Skip this version", QMessageBox.ButtonRole.RejectRole)
+        msg.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+        msg.exec()
+
+        clicked = msg.clickedButton()
+        if clicked is btn_skip:
+            self._settings.setValue('update/skip', rel.version)
+        elif clicked is btn_go:
+            if updater.is_frozen() and rel.exe_url:
+                self._download_update(rel)
+            else:
+                QDesktopServices.openUrl(QUrl(rel.page_url))
+
+    def _download_update(self, rel):
+        if self._worker and self._worker.isRunning():
+            QMessageBox.warning(
+                self, "Update",
+                "A measurement is running. Update again when it has finished "
+                "(Help → Check for updates).")
+            return
+
+        dlg = QProgressDialog(f"Downloading version {rel.version}…", None, 0, 100, self)
+        dlg.setWindowTitle("Updating")
+        dlg.setWindowModality(Qt.WindowModality.WindowModal)
+        dlg.setMinimumDuration(0)
+        dlg.setValue(0)
+
+        def on_progress(done: int, total: int):
+            dlg.setValue(int(100 * done / total) if total else 0)
+
+        def on_done(path: str):
+            dlg.close()
+            try:
+                updater.install_and_restart(path)
+            except Exception as exc:
+                logger.exception("Update install failed")
+                QMessageBox.critical(
+                    self, "Update failed",
+                    f"The update could not be installed:\n{exc}\n\n"
+                    "If the program is in a protected folder (e.g. Program Files), "
+                    "move TPV-TPC.exe to a folder you can write to.")
+                return
+            QApplication.quit()
+
+        def on_failed(err: str):
+            dlg.close()
+            QMessageBox.critical(self, "Update failed",
+                                 f"The update could not be downloaded:\n{err}")
+
+        w = _UpdateDownloadWorker(rel)
+        w.progress.connect(on_progress)
+        w.done.connect(on_done)
+        w.failed.connect(on_failed)
+        self._update_dl = w
+        w.start()
 
     # ── UI construction ───────────────────────────────────────────────────────
 

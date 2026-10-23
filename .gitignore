@@ -23,3 +23,8 @@ Thumbs.db
 
 # VS Code
 .vscode/
+
+# PyInstaller build output
+tpv_app/build/
+tpv_app/dist/
+*.spec

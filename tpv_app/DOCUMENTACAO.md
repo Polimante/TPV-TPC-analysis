@@ -289,6 +289,9 @@ No polling loop is needed — the VISA timeout provides the hard deadline.
 | `hardware.py` | WaveJet (PyVISA) and Arduino (pyserial) communication |
 | `core.py` | Data processing (baseline, alignment, normalisation) and saving (CSV + XLSX) |
 | `diag_osc.py` | Standalone diagnostic script — tests scope communication without GUI |
+| `updater.py` | Update check and self-update from GitHub Releases |
+| `version.py` | Current version number (bump before each release) |
+| `build.ps1` / `release.ps1` | Build `TPV-TPC.exe` / publish it as a GitHub release (see README) |
 | `DOCUMENTACAO.md` | This file |
 
 ---
@@ -300,6 +303,11 @@ No polling loop is needed — the VISA timeout provides the hard deadline.
 - On scope: `Utilities → Remote → Interface → USB`
 - LeCroy USB driver installed? (Scope Explorer or lecroy.com)
 - Run `python tpv_app/diag_osc.py` for detailed diagnostics
+
+**"No data received from oscilloscope channel(s): CHx"** at the end of a measurement:
+- The named channel is turned off on the scope — the WaveJet sends no data for
+  disabled channels. Turn CH1, CH2 and CH3 on, even if the cell uses only one.
+- Less often: the acquisition never triggered (see "Timeout during acquisition").
 
 **Curves with very visible steps**: see section 7 (quantisation).
 Use WORD format + N averages ≥ 8.
