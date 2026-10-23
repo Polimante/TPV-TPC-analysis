@@ -124,9 +124,16 @@ def salvar_csv(
     c2 = np.asarray(dados['C2'], dtype=float)
     c3 = np.asarray(dados['C3'], dtype=float)
 
+    vazios = [ch for ch, arr in (('CH1', c1), ('CH2', c2), ('CH3', c3)) if len(arr) == 0]
+    if vazios:
+        raise ValueError(
+            f"No data received from oscilloscope channel(s): {', '.join(vazios)}.\n"
+            "Check that these channels are turned ON on the scope "
+            "(CH1, CH2 and CH3 must all be enabled), and that the acquisition "
+            "was triggered."
+        )
+
     n = min(len(c1), len(c2), len(c3))
-    if n == 0:
-        raise ValueError("Nenhum dado recebido dos canais do osciloscópio")
 
     c1, c2, c3 = c1[:n], c2[:n], c3[:n]
     t = reconstruir_tempo(n, tdiv)

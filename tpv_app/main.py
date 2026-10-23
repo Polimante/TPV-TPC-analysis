@@ -9,26 +9,26 @@ from gui import MainWindow
 
 def _light_palette() -> QPalette:
     p = QPalette()
-    W = '#f4f6f8'
+    W = '#eef2f7'
     roles = {
         QPalette.ColorRole.Window:          W,
-        QPalette.ColorRole.WindowText:      '#212121',
+        QPalette.ColorRole.WindowText:      '#1f2933',
         QPalette.ColorRole.Base:            '#ffffff',
-        QPalette.ColorRole.AlternateBase:   '#f0f4f8',
-        QPalette.ColorRole.ToolTipBase:     '#37474f',
+        QPalette.ColorRole.AlternateBase:   '#fafcfe',
+        QPalette.ColorRole.ToolTipBase:     '#263238',
         QPalette.ColorRole.ToolTipText:     '#ffffff',
-        QPalette.ColorRole.Text:            '#212121',
-        QPalette.ColorRole.Button:          '#eceff1',
-        QPalette.ColorRole.ButtonText:      '#263238',
+        QPalette.ColorRole.Text:            '#1f2933',
+        QPalette.ColorRole.Button:          '#f2f5f8',
+        QPalette.ColorRole.ButtonText:      '#33424f',
         QPalette.ColorRole.BrightText:      '#ffffff',
         QPalette.ColorRole.Link:            '#1565c0',
         QPalette.ColorRole.Highlight:       '#1565c0',
         QPalette.ColorRole.HighlightedText: '#ffffff',
-        QPalette.ColorRole.Mid:             '#b0bec5',
-        QPalette.ColorRole.Dark:            '#78909c',
-        QPalette.ColorRole.Shadow:          '#546e7a',
+        QPalette.ColorRole.Mid:             '#c6d1dc',
+        QPalette.ColorRole.Dark:            '#8b98a5',
+        QPalette.ColorRole.Shadow:          '#55636f',
         QPalette.ColorRole.Light:           '#ffffff',
-        QPalette.ColorRole.Midlight:        '#eceff1',
+        QPalette.ColorRole.Midlight:        '#f2f5f8',
     }
     for role, color in roles.items():
         p.setColor(role, QColor(color))
