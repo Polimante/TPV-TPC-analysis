@@ -13,9 +13,9 @@ Set-Location $PSScriptRoot
 $version = python -c "from version import __version__; print(__version__)"
 $tag = "v$version"
 
-if (git status --porcelain) { throw "Uncommitted changes — commit them first." }
+if (git status --porcelain) { throw "Uncommitted changes - commit them first." }
 gh release view $tag 2>$null | Out-Null
-if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists — bump __version__ in version.py." }
+if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists - bump __version__ in version.py." }
 
 & "$PSScriptRoot\build.ps1"
 
